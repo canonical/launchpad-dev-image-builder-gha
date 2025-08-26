@@ -2,7 +2,8 @@ name: LP dev image build workflow
 
 on:
   workflow_dispatch:
-
+  schedule:
+    - cron: "0 0 */14 * *"
 jobs:
   build-and-upload:
     runs-on: ubuntu-latest
