@@ -1,0 +1,54 @@
+name: LP dev image build workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Build the LP dev LXD image
+      run: |
+        echo "Installing LXD image builder"
+        sudo snap install --edge --classic lxd-imagebuilder 
+        sudo add-apt-repository -y universe
+        sudo apt -y update
+        sudo apt -y install debootstrap
+        snap list
+        echo "Cloning Launchpad"
+        git clone --progress --verbose -b master https://git.launchpad.net/launchpad
+        cd launchpad
+        echo "Create LXD image for Launchpad"
+        make build-lxd-image
+
+        FILE_PATH=$(realpath $(ls ubuntu-*.tar.xz | head -n 1))
+        echo "File found: $FILE_PATH"
+
+        mkdir -p $GITHUB_WORKSPACE/artifacts
+        mv "$FILE_PATH" "$GITHUB_WORKSPACE/artifacts/launchpad-dev.tar.xz"
+
+        # Export for later steps
+        echo "file_path=$GITHUB_WORKSPACE/artifacts/$(basename $FILE_PATH)" >> $GITHUB_ENV
+
+    - name: Delete existing release (if any)
+      run: |
+        echo "Deleting existing release..."
+        gh release delete latest -y || true
+        git push origin :refs/tags/latest || true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create fresh release with all artifacts
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: latest
+        name: "Latest Launchpad Dev Image (Test)"
+        body: "This is the latest build of the Launchpad Dev LXD image."
+        files: artifacts/**
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
