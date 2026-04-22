@@ -42,14 +42,11 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Create fresh release with all artifacts
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: latest
-        name: "Latest Launchpad Dev Image (Test)"
-        body: "This is the latest build of the Launchpad Dev LXD image."
-        files: artifacts/**
-        draft: false
-        prerelease: false
+    - name: Create release with assets
+      run: |
+        gh release create latest artifacts/** \
+          --title "Latest Launchpad Dev Image" \
+          --notes "This is the latest build of the Launchpad Dev LXD image." \
+          --latest
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
