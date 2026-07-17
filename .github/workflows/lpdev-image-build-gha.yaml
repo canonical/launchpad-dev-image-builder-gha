@@ -44,6 +44,7 @@ jobs:
 
     - name: Create release with assets
       run: |
+        gh release delete latest --yes --cleanup-tag || true
         gh release create latest artifacts/** \
           --title "Latest Launchpad Dev Image" \
           --notes "This is the latest build of the Launchpad Dev LXD image." \
