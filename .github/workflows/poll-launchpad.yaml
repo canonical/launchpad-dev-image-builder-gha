@@ -1,0 +1,80 @@
+name: Poll Launchpad for Changes
+
+# Polls https://git.launchpad.net/launchpad every hour and triggers the LP dev
+# image build workflow when a new commit is detected on master.
+#
+# To change the polling frequency, edit the cron expression below.
+# Examples:
+#   "0 * * * *"    - every hour (default)
+#   "0 */2 * * *"  - every 2 hours
+#   "0 */6 * * *"  - every 6 hours
+#   "0 0 * * *"    - once a day at midnight UTC
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Trigger the image build even if no new commits are detected"
+        required: false
+        default: "false"
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Get latest commit SHA from Launchpad master
+        id: launchpad
+        run: |
+          LATEST_SHA=$(git ls-remote https://git.launchpad.net/launchpad refs/heads/master | awk '{print $1}')
+          if [ -z "$LATEST_SHA" ]; then
+            echo "Failed to retrieve latest commit SHA from Launchpad." >&2
+            exit 1
+          fi
+          echo "sha=$LATEST_SHA" >> "$GITHUB_OUTPUT"
+          echo "Latest Launchpad master SHA: $LATEST_SHA"
+
+      - name: Read stored commit SHA
+        id: stored
+        run: |
+          if [ -s .last-built-commit ]; then
+            STORED_SHA=$(cat .last-built-commit)
+          else
+            STORED_SHA=""
+          fi
+          echo "sha=$STORED_SHA" >> "$GITHUB_OUTPUT"
+          echo "Stored SHA: ${STORED_SHA:-<none>}"
+
+      - name: Trigger build if new commit detected
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_SHA: ${{ steps.launchpad.outputs.sha }}
+          STORED_SHA: ${{ steps.stored.outputs.sha }}
+          FORCE_BUILD: ${{ github.event.inputs.force_build }}
+        run: |
+          if [ "$LATEST_SHA" != "$STORED_SHA" ] || [ "$FORCE_BUILD" = "true" ]; then
+            if [ "$LATEST_SHA" != "$STORED_SHA" ]; then
+              echo "New commit detected ($STORED_SHA -> $LATEST_SHA). Triggering build..."
+            else
+              echo "Force build requested. Triggering build for $LATEST_SHA..."
+            fi
+
+            gh workflow run lpdev-image-build-gha.yaml \
+              --repo "${{ github.repository }}"
+
+            echo "$LATEST_SHA" > .last-built-commit
+
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .last-built-commit
+            git commit -m "chore: update last built Launchpad commit to ${LATEST_SHA}"
+            git push
+          else
+            echo "No new commits since last build ($STORED_SHA). Skipping."
+          fi
